@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: flask-log-agent
+  labels:
+    app: flask-log-agent
+spec:
+  selector:
+    matchLabels:
+      app: flask-log-agent
+  template:
+    metadata:
+      labels:
+        app: flask-log-agent
+    spec:
+      containers:
+      - name: log-agent
+        image: alpine:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          apk add --no-cache findutils grep
+          
+          echo "Log agent started on node $(hostname) at $(date)"
+          
+          monitor_log() {
+            local logfile="$1"
+            echo "[$(date)] Monitoring log file: $logfile"
+            
+            if [ -f "$logfile" ]; then
+              echo "--- BEGIN LOG CONTENT ---"
+              cat "$logfile"
+              echo "--- END LOG CONTENT ---"
+              
+              tail -F "$logfile" | while read -r line; do
+                echo "[FLASK LOG] $line"
+              done &
+            else
+              echo "Log file does not exist yet: $logfile"
+            fi
+          }
+          
+          while true; do
+            echo "[$(date)] Checking for Flask app logs..."
+            
+            APP_LOG_DIR="/flask-app-logs"
+            
+            if [ -d "$APP_LOG_DIR" ]; then
+              echo "Flask app logs directory exists, searching for log files..."
+              
+              find "$APP_LOG_DIR" -type f -name "*.log" 2>/dev/null | while read -r logfile; do
+                if ! ps | grep -q "[t]ail -F $logfile"; then
+                  monitor_log "$logfile"
+                fi
+              done
+              
+              if [ -z "$(find "$APP_LOG_DIR" -type f -name "*.log" 2>/dev/null)" ]; then
+                echo "No log files found in $APP_LOG_DIR"
+              fi
+            else
+              echo "Flask app logs directory does not exist yet: $APP_LOG_DIR"
+            fi
+            
+            sleep 10
+          done
+        volumeMounts:
+        - name: flask-app-logs
+          mountPath: /flask-app-logs
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+      volumes:
+      - name: flask-app-logs
+        hostPath:
+          path: /var/log/flask-app
+          type: Directory 

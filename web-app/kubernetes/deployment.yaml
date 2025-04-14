@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask-app
+  labels:
+    app: flask-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: flask-app
+  template:
+    metadata:
+      labels:
+        app: flask-app
+      annotations:
+        configmap-checksum: "${kubectl get configmap app-config -o yaml | sha256sum}"
+    spec:
+      containers:
+      - name: flask-app
+        image: flask-app:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5000
+        volumeMounts:
+        - name: logs-volume
+          mountPath: /app/logs
+        - name: config-volume
+          mountPath: /app/config
+        env:
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: log_level
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: port
+        - name: GREETING_HEADER
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: greeting_header
+        - name: LOG_FILE
+          value: "/app/logs/app.log"
+      volumes:
+      - name: logs-volume
+        hostPath:
+          path: /var/log/flask-app
+          type: DirectoryOrCreate
+      - name: config-volume
+        configMap:
+          name: app-config 

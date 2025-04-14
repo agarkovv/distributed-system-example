@@ -1,0 +1,72 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: flask-log-archiver
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: log-archiver
+            image: curlimages/curl:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+              ARCHIVE_NAME="/tmp/app-logs-${TIMESTAMP}.tar.gz"
+              
+              echo "Starting log archive job at $(date)"
+              echo "Archive will be saved as: $ARCHIVE_NAME"
+              
+              mkdir -p /tmp/logs
+              
+              echo "Attempting to fetch logs via HTTP API..."
+              
+              if curl -s -f -o /tmp/logs/app.log http://flask-app-service/logs; then
+                echo "Successfully fetched logs via HTTP API"
+                cat /tmp/logs/app.log | grep -o '"logs":"[^"]*"' | sed 's/"logs":"//g' | sed 's/"$//g' | sed 's/\\n/\n/g' > /tmp/logs/extracted.log
+                mv /tmp/logs/extracted.log /tmp/logs/app.log
+              else
+                echo "Failed to fetch logs via HTTP API, trying to read from shared directory..."
+                
+                if [ -d "/shared-logs" ]; then
+                  echo "Shared logs directory found, copying logs..."
+                  cp /shared-logs/*.log /tmp/logs/ 2>/dev/null
+                  
+                  if [ $? -eq 0 ]; then
+                    echo "Successfully copied logs from shared directory"
+                  else
+                    echo "No log files found in shared directory"
+                    echo "Log archive created at ${TIMESTAMP} but no logs were found" > /tmp/logs/empty.log
+                  fi
+                else
+                  echo "Shared logs directory not available"
+                  echo "Log archive created at ${TIMESTAMP} but no logs were found" > /tmp/logs/empty.log
+                fi
+              fi
+              
+              echo "Creating archive..."
+              tar -czf $ARCHIVE_NAME -C /tmp logs
+              
+              ls -lh $ARCHIVE_NAME
+              
+              echo "Log archiving completed at $(date)"
+              
+              echo "Archive will be available in /tmp for the next 60 seconds"
+              sleep 60
+            volumeMounts:
+            - name: shared-logs-volume
+              mountPath: /shared-logs
+              readOnly: true
+          restartPolicy: OnFailure
+          volumes:
+          - name: shared-logs-volume
+            hostPath:
+              path: /var/log/flask-app
+              type: Directory 

@@ -1,3 +1,9 @@
+archive-logs.sh
+build-and-deploy.sh
+deploy-log-agent.sh
+test-load-balancing.sh
+update-config.sh
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
