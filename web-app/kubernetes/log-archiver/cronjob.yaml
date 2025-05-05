@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: flask-log-archiver
+  labels:
+    app: flask-log-archiver
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: log-archiver
+            image: flask-log-archiver:latest
+            imagePullPolicy: IfNotPresent
+            env:
+            - name: SERVICE_URL
+              value: "http://flask-app-service"
+            - name: KEEP_ARCHIVE
+              value: "true"
+            - name: KEEP_TIME
+              value: "300"
+            volumeMounts:
+            - name: shared-logs-volume
+              mountPath: /shared-logs
+              readOnly: true
+            resources:
+              requests:
+                memory: "64Mi"
+                cpu: "100m"
+              limits:
+                memory: "128Mi"
+                cpu: "200m"
+          restartPolicy: OnFailure
+          volumes:
+          - name: shared-logs-volume
+            hostPath:
+              path: /var/log/flask-app
+              type: Directory 
