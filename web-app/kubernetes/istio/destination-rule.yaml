@@ -1,0 +1,16 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: flask-destination-rule
+spec:
+  host: app-service
+  trafficPolicy:
+    loadBalancer:
+      simple: LEAST_CONN
+    connectionPool:
+      tcp:
+        maxConnections: 3
+      http:
+        http1MaxPendingRequests: 5
+    tls:
+      mode: ISTIO_MUTUAL 
