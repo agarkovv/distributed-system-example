@@ -2,15 +2,27 @@ import json
 import logging
 import os
 import socket
+import time
 from datetime import datetime
 
 import flask
-from flask import request
+from flask import Response, request
 from kubernetes import client, config
+from prometheus_client import Counter, Histogram, generate_latest
 
 POD_NAME = socket.gethostname()
 
 app = flask.Flask(__name__)
+
+# Metrics
+log_requests_total = Counter("log_requests_total", "Total number of /log requests")
+log_requests_success = Counter(
+    "log_requests_success", "Number of successful /log requests"
+)
+log_requests_failure = Counter("log_requests_failure", "Number of failed /log requests")
+log_request_duration = Histogram(
+    "log_request_duration_seconds", "Time spent processing /log requests"
+)
 
 try:
     config.load_incluster_config()
@@ -53,8 +65,16 @@ def status():
     return flask.jsonify({"status": "ok", "pod": POD_NAME})
 
 
+@app.route("/metrics")
+def metrics():
+    return Response(generate_latest(), mimetype="text/plain")
+
+
 @app.route("/log", methods=["POST"])
 def log_message():
+    log_requests_total.inc()
+    start_time = time.time()
+
     try:
         data = request.get_json()
         if not data or "message" not in data:
@@ -71,10 +91,14 @@ def log_message():
             log_file.write(log_entry)
 
         logger.info(f"Log entry added: {message}")
+        log_requests_success.inc()
         return flask.jsonify({"success": True, "pod": POD_NAME}), 201
     except Exception as e:
         logger.error(f"Error logging message: {str(e)}")
+        log_requests_failure.inc()
         return flask.jsonify({"error": str(e), "pod": POD_NAME}), 500
+    finally:
+        log_request_duration.observe(time.time() - start_time)
 
 
 @app.route("/logs", methods=["GET"])
