@@ -1,0 +1,52 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: flask-virtual-service
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - flask-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /log
+    fault:
+      delay:
+        percentage:
+          value: 100
+        fixedDelay: 2s
+      abort:
+        percentage:
+          value: 100
+        httpStatus: 504
+    timeout: 1s
+    retries:
+      attempts: 2
+      perTryTimeout: 0.5s
+    route:
+    - destination:
+        host: app-service
+        port:
+          number: 5000
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: app-service
+        port:
+          number: 5000
+  - match:
+    - uri:
+        prefix: /wrong
+    route:
+    - destination:
+        host: app-service
+        port:
+          number: 5000
+      fault:
+        abort:
+          httpStatus: 404
+          percentage:
+            value: 100 
